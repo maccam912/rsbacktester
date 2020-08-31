@@ -174,6 +174,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_e2e() {
         let mut engine = init_engine(&"test_resources/mgcticks.csv", 10000);
         println!("Engine initialized");
