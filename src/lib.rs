@@ -3,6 +3,7 @@ use chrono::prelude::*;
 use rust_decimal::prelude::*;
 use std::path::Path;
 use serde::Deserialize;
+use hashbrown::HashMap;
 
 mod indicators;
 
@@ -37,7 +38,7 @@ pub struct Engine {
     time: DateTime<Utc>,
     prices: TS,
     index: i64,
-    indicators: Vec<Box<dyn indicators::Indicator>>,
+    indicators: hashbrown::HashMap<String, Box<dyn indicators::Indicator>>,
 }
 
 #[derive(Debug)]
@@ -51,7 +52,9 @@ pub struct Signal {
 impl Engine {
     pub fn step(self: &mut Engine) {
         self.update_indicators();
-        let signals = self.check_signals();
+        let _signals = self.check_signals();
+
+        self.index += 1;
     }
 
     pub fn check_signals(self: &Engine) -> Vec<Signal> {
@@ -59,13 +62,16 @@ impl Engine {
         vec![s]
     }
 
-    pub fn register_indicator(self: &mut Engine, indicator: Box<dyn indicators::Indicator>) {
-        self.indicators.push(indicator);
+    pub fn register_indicator(self: &mut Engine, name: String, indicator: Box<dyn indicators::Indicator>) {
+        self.indicators.insert(name, indicator);
     }
 
     pub fn update_indicators(self: &mut Engine) {
-        for indicator in &mut self.indicators {
-            indicator.update(self)
+        for (_, indicator) in &mut self.indicators {
+            let stepvaluetick = self.prices.ticks[self.index as usize];
+            let stepvaluesum = stepvaluetick.ask.checked_add(stepvaluetick.bid);
+            let stepvalue = stepvaluesum.unwrap().checked_div(Decimal::new(2, 0));
+            indicator.update(stepvalue.unwrap())
         }
     }
 
@@ -113,15 +119,15 @@ fn init_prices<P: AsRef<Path>>(path: &P) -> anyhow::Result<TS> {
 pub fn init_engine<P: AsRef<Path>>(path: &P, cash: i64) -> Engine {
     let prices: TS = init_prices(path).expect("could not load prices");
     let t1 = prices.ticks[0].timestamp;
-    Engine{acct: init_acct(cash), time: t1, prices: prices, index: 0, indicators: vec![]}
+    Engine{acct: init_acct(cash), time: t1, prices: prices, index: 0, indicators: HashMap::new()}
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{TS, Tick, init_engine};
+    use crate::{TS, Tick, init_engine, indicators};
     use chrono::prelude::*;
     use rust_decimal::Decimal;
-    use std::path::Path;
+    use std::{collections::VecDeque, path::Path};
 
     #[test]
     fn test_tick() {
@@ -148,14 +154,35 @@ mod tests {
 
     #[test]
     fn test_init_engine() {
-        let engine = init_engine(&"test_resources/ticks.csv", 10000);
-        println!("{:?}", engine);
+        let _ = init_engine(&"test_resources/ticks.csv", 10000);
     }
 
     #[test]
     #[ignore]
     fn test_large_dataframe() {
-        let engine = init_engine(&"test_resources/mgcticks.csv", 10000);
-        println!("{:?}", engine.prices.ticks.len());
+        let _ = init_engine(&"test_resources/mgcticks.csv", 10000);
+    }
+
+    #[test]
+    fn test_moving_average() {
+        let mut engine = init_engine(&"test_resources/ticks.csv", 10000);
+        let i = indicators::MovingAverage{length: 10, prices: VecDeque::new(), input: "price".to_string()};
+        engine.register_indicator("ind1".to_string(), Box::new(i));
+        engine.step();
+        engine.step();
+        assert!(engine.indicators["ind1"].value().expect("Could not get MA value") == 1657.6);
+    }
+
+    #[test]
+    fn test_e2e() {
+        let mut engine = init_engine(&"test_resources/mgcticks.csv", 10000);
+        println!("Engine initialized");
+        let i = indicators::MovingAverage{length: 1000, prices: VecDeque::new(), input: "price".to_string()};
+        engine.register_indicator("ind2".to_string(), Box::new(i));
+        for _ in 1..engine.prices.ticks.len() {
+            engine.step();
+        }
+        println!("All steps done!");
+        println!("{:?}", engine.indicators["ind2"].value());
     }
 }

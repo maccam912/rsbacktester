@@ -1,16 +1,17 @@
 use rust_decimal::prelude::*;
-use crate::Engine;
 use std::fmt::Debug;
+use std::collections::VecDeque;
 
 pub trait Indicator: Debug {
     fn value(&self) -> anyhow::Result<f64>;
-    fn update(&mut self, engine: &Engine);
+    fn update(&mut self, stepvalue: Decimal);
 }
 
 #[derive(Debug)]
 pub struct MovingAverage {
-    length: i32,
-    prices: Vec<Option<Decimal>>,
+    pub length: usize,
+    pub prices: VecDeque<Option<Decimal>>,
+    pub input: String,
 }
 
 impl Indicator for MovingAverage {
@@ -30,10 +31,9 @@ impl Indicator for MovingAverage {
         Ok(sum/count)
     }
 
-    fn update(self: &mut MovingAverage, engine: &Engine) {
-        let bbo = engine.prices.ticks[engine.index as usize];
-        let sum = bbo.ask.checked_add(bbo.bid).expect("Could not add ask and bid decimals");
-        let avg = sum.checked_div(Decimal::new(2, 0)).expect("Could not divide bid+ask by 2");
-        self.prices.push(Some(avg));
+    fn update(self: &mut MovingAverage, stepvalue: Decimal) {
+        self.prices.push_front(Some(stepvalue));
+        self.prices.truncate(self.length);
+
     }
 }
