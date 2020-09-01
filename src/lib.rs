@@ -5,53 +5,64 @@ use std::path::Path;
 use serde::Deserialize;
 use hashbrown::HashMap;
 
-mod indicators;
+pub mod indicators;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Tick {
-    timestamp: DateTime<Utc>,
-    bid:  Decimal,
-    ask: Decimal,
+    pub timestamp: DateTime<Utc>,
+    pub bid:  Decimal,
+    pub ask: Decimal,
 }
 
+/// `TS` is a time series of `Tick`s.
+/// ```
+/// use rsbacktester::{Tick, TS};
+/// use rust_decimal::Decimal;
+/// use chrono::Utc;
+///
+/// let t = Tick{timestamp: Utc::now(), bid: Decimal::new(202, 2), ask: Decimal::new(203, 1)};
+/// let ts = TS{ticks: vec![t]};
+/// # assert!(ts.ticks.len() == 1);
+/// ```
 #[derive(Debug)]
 pub struct TS {
-    ticks: Vec<Tick>,
+    pub ticks: Vec<Tick>,
 }
 
 #[derive(Debug)]
 pub struct Position {
-    asset: String,
-    lots: i64,
-    cost_basis: Decimal,
+    pub asset: String,
+    pub lots: i64,
+    pub cost_basis: Decimal,
 }
 
 #[derive(Debug)]
 pub struct Account {
-    cash: Decimal,
-    portfolio: Vec<Position>,
+    pub cash: Decimal,
+    pub portfolio: Vec<Position>,
 }
 
 #[derive(Debug)]
 pub struct Engine {
-    acct: Account,
-    time: DateTime<Utc>,
-    prices: TS,
-    index: i64,
-    indicators: hashbrown::HashMap<String, Box<dyn indicators::Indicator>>,
+    pub acct: Account,
+    pub time: DateTime<Utc>,
+    pub prices: TS,
+    pub index: i64,
+    pub indicators: hashbrown::HashMap<String, Box<dyn indicators::Indicator>>,
 }
 
 #[derive(Debug)]
 pub struct Signal {
-    asset: String,
-    direction_up: bool,
-    magnitude: Option<f32>,
-    duration: Option<i32>,
+    pub asset: String,
+    pub direction_up: bool,
+    pub magnitude: Option<f32>,
+    pub duration: Option<i32>,
 }
 
 impl Engine {
     pub fn step(self: &mut Engine) {
-        self.update_indicators();
+        let iv = self.indicator_values();
+        self.update_indicators(iv);
         let _signals = self.check_signals();
 
         self.index += 1;
@@ -66,12 +77,27 @@ impl Engine {
         self.indicators.insert(name, indicator);
     }
 
-    pub fn update_indicators(self: &mut Engine) {
+    fn indicator_values(self: &Engine) -> HashMap<String, Option<f64>> {
+        let mut values = HashMap::new();
+        for (name, ind) in &self.indicators {
+            let v = ind.value();
+            values.insert(name.to_string(), v);
+        }
+        values
+    }
+
+    pub fn update_indicators(self: &mut Engine, ind_values: HashMap<String, Option<f64>>) {
         for (_, indicator) in &mut self.indicators {
-            let stepvaluetick = self.prices.ticks[self.index as usize];
-            let stepvaluesum = stepvaluetick.ask.checked_add(stepvaluetick.bid);
-            let stepvalue = stepvaluesum.unwrap().checked_div(Decimal::new(2, 0));
-            indicator.update(stepvalue.unwrap())
+            if &indicator.get_input() == "price" {
+                let stepvaluetick = self.prices.ticks[self.index as usize];
+                let stepvaluesum = stepvaluetick.ask.checked_add(stepvaluetick.bid);
+                let stepvalue = stepvaluesum.unwrap().checked_div(Decimal::new(2, 0));
+                let v: Option<f64> = stepvalue.expect("Decimal was screwy").to_f64();
+                indicator.update(v);
+            } else {
+                let v = ind_values[&indicator.get_input()];
+                indicator.update(v);
+            }
         }
     }
 
@@ -80,13 +106,13 @@ impl Engine {
 #[derive(Debug, Deserialize)]
 struct Record {
     #[serde(rename = "Date")]
-    date: String,
+    pub date: String,
     #[serde(rename = "Time")]
-    time: String,
+    pub time: String,
     #[serde(rename = "Bid")]
-    bid: String,
+    pub bid: String,
     #[serde(rename = "Ask")]
-    ask: String,
+    pub ask: String,
 }
 
 fn init_acct(cash: i64) -> Account {
@@ -127,7 +153,7 @@ mod tests {
     use crate::{TS, Tick, init_engine, indicators};
     use chrono::prelude::*;
     use rust_decimal::Decimal;
-    use std::{collections::VecDeque, path::Path};
+    use std::path::Path;
 
     #[test]
     fn test_tick() {
@@ -166,24 +192,25 @@ mod tests {
     #[test]
     fn test_moving_average() {
         let mut engine = init_engine(&"test_resources/ticks.csv", 10000);
-        let i = indicators::MovingAverage{length: 10, prices: VecDeque::new(), input: "price".to_string()};
+        let i = indicators::MovingAverage::new(10, "price".to_string());
         engine.register_indicator("ind1".to_string(), Box::new(i));
         engine.step();
         engine.step();
-        assert!(engine.indicators["ind1"].value().expect("Could not get MA value") == 1657.6);
+        assert!(engine.indicators["ind1"].value().expect("Could not get MA value") == 0.5);
     }
 
     #[test]
-    #[ignore]
-    fn test_e2e() {
-        let mut engine = init_engine(&"test_resources/mgcticks.csv", 10000);
+    fn test_momentum() {
+        let mut engine = init_engine(&"test_resources/ticks.csv", 10000);
         println!("Engine initialized");
-        let i = indicators::MovingAverage{length: 1000, prices: VecDeque::new(), input: "price".to_string()};
+        let i = indicators::MovingAverage::new(4, "price".to_string());
         engine.register_indicator("ind2".to_string(), Box::new(i));
-        for _ in 1..engine.prices.ticks.len() {
+        let mom = indicators::Momentum::new(3, "ind2".to_string());
+        engine.register_indicator("mom".to_string(), Box::new(mom));
+        for _ in 0..engine.prices.ticks.len() {
             engine.step();
         }
-        println!("All steps done!");
-        println!("{:?}", engine.indicators["ind2"].value());
+        assert!(engine.indicators["ind2"].value().unwrap() == 27.5);
+        assert!(engine.indicators["mom"].value().unwrap()  == 2.0);
     }
 }
