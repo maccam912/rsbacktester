@@ -7,7 +7,7 @@ edition = "2018"
 [lib]
 name = "rsbacktester"
 path = "src/lib.rs"
-crate-type = ["staticlib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 chrono = "0.4"
