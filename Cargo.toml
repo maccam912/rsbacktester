@@ -4,7 +4,10 @@ version = "0.1.0"
 authors = ["maccam912 <maccam912@gmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "rsbacktester"
+path = "src/lib.rs"
+crate-type = ["staticlib"]
 
 [dependencies]
 chrono = "0.4"
