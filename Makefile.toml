@@ -1,6 +1,3 @@
-[tasks.default]
-dependencies = ["test", "jl_test"]
-
 [tasks.jl_test]
 dependencies = ["copy_to_julia"]
 command = "julia"

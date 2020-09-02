@@ -18,5 +18,7 @@ jobs:
     - uses: actions/checkout@v2
     - name: Install Cargo Make
       run: cargo install --force cargo-make
-    - name: Run Cargo Make
-      run: cargo make default --verbose
+    - name: Rust Test
+      run: cargo make test
+    - name: Julia test
+      run: cargo make jl_test
