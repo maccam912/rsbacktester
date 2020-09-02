@@ -3,7 +3,11 @@ use chrono::prelude::*;
 use hashbrown::HashMap;
 use rust_decimal::prelude::*;
 use serde::Deserialize;
-use std::{os::raw::c_char, path::Path, ffi::{CString, CStr}};
+use std::{
+    ffi::{CStr, CString},
+    os::raw::c_char,
+    path::Path,
+};
 
 pub mod indicators;
 
@@ -209,10 +213,14 @@ pub extern "C" fn step_jl_engine(engine: *mut Engine, steps: u32) {
     }
 }
 
+#[no_mangle]
 pub extern "C" fn engine_json(engine: *mut Engine) -> *const c_char {
     unsafe {
         let eng = Box::from_raw(engine);
-        CString::new(format!("{:?}", eng)).unwrap().as_ptr()
+        let respstr = format!("{:?}", eng);
+        let cstrptr = CString::new(respstr).unwrap().as_ptr();
+        println!("{:?}", cstrptr);
+        cstrptr
     }
 }
 
