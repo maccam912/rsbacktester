@@ -1,16 +1,21 @@
 #![allow(dead_code)]
 use chrono::prelude::*;
-use rust_decimal::prelude::*;
-use std::path::Path;
-use serde::Deserialize;
 use hashbrown::HashMap;
+use rust_decimal::prelude::*;
+use serde::Deserialize;
+use std::path::Path;
 
 pub mod indicators;
+
+#[no_mangle]
+pub extern "C" fn test() -> isize {
+    1
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Tick {
     pub timestamp: DateTime<Utc>,
-    pub bid:  Decimal,
+    pub bid: Decimal,
     pub ask: Decimal,
 }
 
@@ -69,11 +74,20 @@ impl Engine {
     }
 
     pub fn check_signals(self: &Engine) -> Vec<Signal> {
-        let s = Signal{asset: "SPY".to_string(), direction_up: true, magnitude: None, duration: None};
+        let s = Signal {
+            asset: "SPY".to_string(),
+            direction_up: true,
+            magnitude: None,
+            duration: None,
+        };
         vec![s]
     }
 
-    pub fn register_indicator(self: &mut Engine, name: String, indicator: Box<dyn indicators::Indicator>) {
+    pub fn register_indicator(
+        self: &mut Engine,
+        name: String,
+        indicator: Box<dyn indicators::Indicator>,
+    ) {
         self.indicators.insert(name, indicator);
     }
 
@@ -100,7 +114,6 @@ impl Engine {
             }
         }
     }
-
 }
 
 #[derive(Debug, Deserialize)]
@@ -116,7 +129,10 @@ struct Record {
 }
 
 fn init_acct(cash: i64) -> Account {
-    Account{cash: Decimal::from(cash), portfolio: vec![]}
+    Account {
+        cash: Decimal::from(cash),
+        portfolio: vec![],
+    }
 }
 
 fn record_to_tick(r: &Record) -> anyhow::Result<Tick> {
@@ -127,7 +143,11 @@ fn record_to_tick(r: &Record) -> anyhow::Result<Tick> {
 
     let ask: Decimal = Decimal::from_str(&r.ask)?;
     let bid: Decimal = Decimal::from_str(&r.bid)?;
-    Ok(Tick{timestamp: utc_dt, ask: ask, bid: bid})
+    Ok(Tick {
+        timestamp: utc_dt,
+        ask: ask,
+        bid: bid,
+    })
 }
 
 fn init_prices<P: AsRef<Path>>(path: &P) -> anyhow::Result<TS> {
@@ -139,25 +159,35 @@ fn init_prices<P: AsRef<Path>>(path: &P) -> anyhow::Result<TS> {
         ticks.push(tick);
     }
 
-    Ok(TS{ticks})
+    Ok(TS { ticks })
 }
 
 pub fn init_engine<P: AsRef<Path>>(path: &P, cash: i64) -> Engine {
     let prices: TS = init_prices(path).expect("could not load prices");
     let t1 = prices.ticks[0].timestamp;
-    Engine{acct: init_acct(cash), time: t1, prices: prices, index: 0, indicators: HashMap::new()}
+    Engine {
+        acct: init_acct(cash),
+        time: t1,
+        prices: prices,
+        index: 0,
+        indicators: HashMap::new(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{TS, Tick, init_engine, indicators};
+    use crate::{indicators, init_engine, Tick, TS};
     use chrono::prelude::*;
     use rust_decimal::Decimal;
     use std::path::Path;
 
     #[test]
     fn test_tick() {
-        let t = Tick{timestamp: Utc::now(), bid: Decimal::new(202, 2), ask: Decimal::new(203, 1)};
+        let t = Tick {
+            timestamp: Utc::now(),
+            bid: Decimal::new(202, 2),
+            ask: Decimal::new(203, 1),
+        };
         let twenty = Decimal::new(20, 0);
         let thirty = Decimal::new(30, 0);
         assert!(t.ask.ge(&twenty));
@@ -167,8 +197,12 @@ mod tests {
 
     #[test]
     fn test_ts() {
-        let t = Tick{timestamp: Utc::now(), bid: Decimal::new(202, 2), ask: Decimal::new(203, 1)};
-        let ts = TS{ticks: vec![t]};
+        let t = Tick {
+            timestamp: Utc::now(),
+            bid: Decimal::new(202, 2),
+            ask: Decimal::new(203, 1),
+        };
+        let ts = TS { ticks: vec![t] };
         assert!(ts.ticks.len() == 1);
     }
 
@@ -196,7 +230,12 @@ mod tests {
         engine.register_indicator("ind1".to_string(), Box::new(i));
         engine.step();
         engine.step();
-        assert!(engine.indicators["ind1"].value().expect("Could not get MA value") == 0.5);
+        assert!(
+            engine.indicators["ind1"]
+                .value()
+                .expect("Could not get MA value")
+                == 0.5
+        );
     }
 
     #[test]
@@ -211,6 +250,6 @@ mod tests {
             engine.step();
         }
         assert!(engine.indicators["ind2"].value().unwrap() == 27.5);
-        assert!(engine.indicators["mom"].value().unwrap()  == 2.0);
+        assert!(engine.indicators["mom"].value().unwrap() == 2.0);
     }
 }

@@ -1,3 +1,4 @@
 /target
+julia/*backtester*
 Cargo.lock
 test_resources/mgcticks.csv

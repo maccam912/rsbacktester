@@ -1,6 +1,6 @@
 use rust_decimal::prelude::*;
-use std::fmt::Debug;
 use std::collections::VecDeque;
+use std::fmt::Debug;
 /// `Indicator`s are any struct that implements the trait. It needs a `value()` function,
 /// which returns a `Result<f64>` conaining the latest value of that indicator. The `update()`
 /// function, when given a `stepvalue: Decimal`, should update the state of the indicator. This funciton
@@ -22,7 +22,13 @@ pub struct MovingAverage {
 }
 
 impl MovingAverage {
-    pub fn new(length: usize, input: String) -> Self { Self { length, input, operands: VecDeque::new() } }
+    pub fn new(length: usize, input: String) -> Self {
+        Self {
+            length,
+            input,
+            operands: VecDeque::new(),
+        }
+    }
 }
 
 impl Indicator for MovingAverage {
@@ -34,11 +40,11 @@ impl Indicator for MovingAverage {
                 Some(v) => {
                     sum += v.to_f64().expect("Could not convert price to f64");
                     count += 1.;
-                },
-                None => {},
+                }
+                None => {}
             }
         }
-        Some(sum/count)
+        Some(sum / count)
     }
 
     fn get_input(self: &Self) -> String {
@@ -62,7 +68,13 @@ pub struct Momentum {
 }
 
 impl Momentum {
-    pub fn new(length: usize, input: String) -> Self { Self { length, input, operands: VecDeque::new() } }
+    pub fn new(length: usize, input: String) -> Self {
+        Self {
+            length,
+            input,
+            operands: VecDeque::new(),
+        }
+    }
 }
 
 impl Indicator for Momentum {
@@ -71,7 +83,7 @@ impl Indicator for Momentum {
         if l == 0 {
             None
         } else {
-            let a = self.operands[l-1].expect("Last element of operands is `None`");
+            let a = self.operands[l - 1].expect("Last element of operands is `None`");
             let b = self.operands[0].expect("First element of operands is `None`");
             let diff = b - a;
             Some(diff)

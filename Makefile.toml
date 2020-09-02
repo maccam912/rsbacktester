@@ -1,0 +1,35 @@
+[tasks.default]
+dependencies = ["test", "jl_test"]
+
+[tasks.jl_test]
+dependencies = ["copy_to_julia"]
+command = "julia"
+args = ["julia/test.jl"]
+
+[tasks.test]
+command = "cargo"
+args = ["test"]
+
+[tasks.copy_to_julia]
+windows_alias = "copy_to_julia_windows"
+mac_alias = "copy_to_julia_mac"
+linux_alias = "copy_to_julia_linux"
+
+[tasks.copy_to_julia_windows]
+dependencies = ["build"]
+command = "cp"
+args = ["target/release/rsbacktester.dll", "julia"]
+
+[tasks.copy_to_julia_mac]
+dependencies = ["build"]
+command = "cp"
+args = ["target/release/librsbacktester.dylib", "julia"]
+
+[tasks.copy_to_julia_linux]
+dependencies = ["build"]
+command = "cp"
+args = ["target/release/librsbacktester.so", "julia"]
+
+[tasks.build]
+command = "cargo"
+args = ["build", "--release"]
