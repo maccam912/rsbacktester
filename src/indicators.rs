@@ -6,7 +6,7 @@ use std::fmt::Debug;
 /// which returns a `Result<f64>` conaining the latest value of that indicator. The `update()`
 /// function, when given a `stepvalue: Decimal`, should update the state of the indicator. This funciton
 /// is called when doing an engine step.
-pub trait Indicator: Debug + Sync {
+pub trait Indicator: Debug + Sync + Send {
     fn value(&self) -> Option<f64>;
     fn update(&mut self, stepvalue: Option<f64>);
     fn get_input(&self) -> String;
