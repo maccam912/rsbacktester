@@ -27,11 +27,12 @@ cp "${RUST_LIB}" "${prefix}"
 # These are the platforms we will build for by default, unless further
 # platforms are passed in on the command line
 platforms = [
-    Linux(:i686, libc=:glibc),
+    #Windows(:x86_64),
+    #Linux(:i686, libc=:glibc),
     Linux(:x86_64, libc=:glibc),
-    Linux(:aarch64, libc=:glibc),
-    Linux(:armv7l, libc=:glibc, call_abi=:eabihf),
-    Linux(:powerpc64le, libc=:glibc)
+    #Linux(:aarch64, libc=:glibc),
+    #Linux(:armv7l, libc=:glibc, call_abi=:eabihf),
+    #Linux(:powerpc64le, libc=:glibc),
 ]
 
 

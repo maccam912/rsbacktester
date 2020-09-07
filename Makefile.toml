@@ -14,8 +14,8 @@ linux_alias = "copy_to_julia_linux"
 
 [tasks.copy_to_julia_windows]
 dependencies = ["build"]
-command = "cp"
-args = ["target/release/rsbacktester.dll", "julia"]
+command = "copy"
+args = ["target\release\rsbacktester.dll", "julia"]
 
 [tasks.copy_to_julia_mac]
 dependencies = ["build"]
