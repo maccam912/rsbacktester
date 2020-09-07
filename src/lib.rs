@@ -3,27 +3,9 @@ use chrono::prelude::*;
 use hashbrown::HashMap;
 use rust_decimal::prelude::*;
 use serde::Deserialize;
-use std::{
-    ffi::{CStr, CString},
-    os::raw::c_char,
-    path::Path,
-};
+use std::path::Path;
 
 pub mod indicators;
-
-#[no_mangle]
-pub extern "C" fn test_engine() -> f64 {
-    let mut engine = init_engine(&"test_resources/ticks.csv", 10000);
-    println!("Engine initialized");
-    let i = indicators::MovingAverage::new(4, "price".to_string());
-    engine.register_indicator("ind2".to_string(), Box::new(i));
-    let mom = indicators::Momentum::new(3, "ind2".to_string());
-    engine.register_indicator("mom".to_string(), Box::new(mom));
-    for _ in 0..engine.prices.ticks.len() {
-        engine.step();
-    }
-    engine.indicators["mom"].value().unwrap()
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Tick {
@@ -185,42 +167,6 @@ fn init_engine<P: AsRef<Path>>(path: &P, cash: i64) -> Engine {
         prices: prices,
         index: 0,
         indicators: HashMap::new(),
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn test_rust(path: i64) {
-    println!("{:?}", path);
-}
-
-#[no_mangle]
-pub extern "C" fn jl_engine(path: *const c_char, cash: i64) -> *mut Engine {
-    unsafe {
-        let rspath = CStr::from_ptr(path).to_string_lossy().into_owned();
-        let boxed_engine = Box::new(init_engine(&rspath, cash as i64));
-        Box::into_raw(boxed_engine)
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn step_jl_engine(engine: *mut Engine, steps: u32) {
-    unsafe {
-        let mut eng = Box::from_raw(engine);
-        println!("{:?}", eng);
-        for _ in 0..steps {
-            eng.step();
-        }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn engine_json(engine: *mut Engine) -> *const c_char {
-    unsafe {
-        let eng = Box::from_raw(engine);
-        let respstr = format!("{:?}", eng);
-        let cstrptr = CString::new(respstr).unwrap().as_ptr();
-        println!("{:?}", cstrptr);
-        cstrptr
     }
 }
 
