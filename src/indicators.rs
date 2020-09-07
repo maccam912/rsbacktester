@@ -1,11 +1,12 @@
 use rust_decimal::prelude::*;
 use std::collections::VecDeque;
 use std::fmt::Debug;
+
 /// `Indicator`s are any struct that implements the trait. It needs a `value()` function,
 /// which returns a `Result<f64>` conaining the latest value of that indicator. The `update()`
 /// function, when given a `stepvalue: Decimal`, should update the state of the indicator. This funciton
 /// is called when doing an engine step.
-pub trait Indicator: Debug {
+pub trait Indicator: Debug + Sync {
     fn value(&self) -> Option<f64>;
     fn update(&mut self, stepvalue: Option<f64>);
     fn get_input(&self) -> String;
