@@ -158,7 +158,7 @@ fn init_prices<P: AsRef<Path>>(path: &P) -> anyhow::Result<TS> {
     Ok(TS { ticks })
 }
 
-fn init_engine<P: AsRef<Path>>(path: &P, cash: i64) -> Engine {
+pub fn init_engine<P: AsRef<Path>>(path: &P, cash: i64) -> Engine {
     let prices: TS = init_prices(path).expect("could not load prices");
     let t1 = prices.ticks[0].timestamp;
     Engine {
