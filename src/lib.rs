@@ -52,6 +52,9 @@ pub struct Engine {
     pub indicators: hashbrown::HashMap<String, indicators::Indicator>,
 }
 
+unsafe impl Send for Engine {}
+unsafe impl Sync for Engine {}
+
 #[derive(Debug)]
 pub struct Signal {
     pub asset: String,
