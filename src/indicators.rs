@@ -2,20 +2,37 @@ use rust_decimal::prelude::*;
 use std::collections::VecDeque;
 use std::fmt::Debug;
 
-/// `Indicator`s are any struct that implements the trait. It needs a `value()` function,
-/// which returns a `Result<f64>` conaining the latest value of that indicator. The `update()`
-/// function, when given a `stepvalue: Decimal`, should update the state of the indicator. This funciton
-/// is called when doing an engine step.
-pub trait Indicator: Debug + Sync + Send {
-    fn value(&self) -> Option<f64>;
-    fn update(&mut self, stepvalue: Option<f64>);
-    fn get_input(&self) -> String;
+#[derive(Debug, Clone)]
+pub enum Indicator {
+    MovingAverage(MovingAverage),
+    Momentum(Momentum),
+}
+
+impl Indicator {
+    pub fn get_input(self: &Self) -> String {
+        match self {
+            Indicator::MovingAverage(i) => i.get_input(),
+            Indicator::Momentum(i) => i.get_input(),
+        }
+    }
+    pub fn update(self: &mut Self, stepvalue: Option<f64>) {
+        match self {
+            Indicator::MovingAverage(i) => i.update(stepvalue),
+            Indicator::Momentum(i) => i.update(stepvalue),
+        }
+    }
+    pub fn value(self: &Self) -> Option<f64> {
+        match self {
+            Indicator::MovingAverage(i) => i.value(),
+            Indicator::Momentum(i) => i.value(),
+        }
+    }
 }
 
 /// `MovingAverage` is defined by the `length` the MA should look back
 /// and an `input: String` which can contain "price" to use the latest prices, or another string to give you
 /// a Moving Average of another `Indicator`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MovingAverage {
     pub length: usize,
     pub input: String,
@@ -32,7 +49,7 @@ impl MovingAverage {
     }
 }
 
-impl Indicator for MovingAverage {
+impl MovingAverage {
     fn value(self: &Self) -> Option<f64> {
         let mut sum: f64 = 0.;
         let mut count: f64 = 0.;
@@ -61,7 +78,7 @@ impl Indicator for MovingAverage {
 /// `Momentum` is defined by the `length` the Momentum indicator should look back
 /// and an `input: String` which can contain "price" to use the latest prices, or another string to give you
 /// a Moving Average of another `Indicator`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Momentum {
     pub length: usize,
     pub input: String,
@@ -78,7 +95,7 @@ impl Momentum {
     }
 }
 
-impl Indicator for Momentum {
+impl Momentum {
     fn value(self: &Self) -> Option<f64> {
         let l = self.operands.len();
         if l == 0 {

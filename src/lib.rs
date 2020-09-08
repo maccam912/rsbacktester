@@ -24,32 +24,32 @@ pub struct Tick {
 /// let ts = TS{ticks: vec![t]};
 /// # assert!(ts.ticks.len() == 1);
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TS {
     pub ticks: Vec<Tick>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Position {
     pub asset: String,
     pub lots: i64,
     pub cost_basis: Decimal,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Account {
     pub cash: Decimal,
     pub portfolio: Vec<Position>,
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Engine {
     pub acct: Account,
     pub time: DateTime<Utc>,
     pub prices: TS,
     pub index: i64,
-    pub indicators: hashbrown::HashMap<String, Box<dyn indicators::Indicator>>,
+    pub indicators: hashbrown::HashMap<String, indicators::Indicator>,
 }
 
 #[derive(Debug)]
@@ -82,7 +82,7 @@ impl Engine {
     pub fn register_indicator(
         self: &mut Engine,
         name: String,
-        indicator: Box<dyn indicators::Indicator>,
+        indicator: indicators::Indicator,
     ) {
         self.indicators.insert(name, indicator);
     }
@@ -172,7 +172,7 @@ pub fn init_engine<P: AsRef<Path>>(path: &P, cash: i64) -> Engine {
 
 #[cfg(test)]
 mod tests {
-    use crate::{indicators, init_engine, Tick, TS};
+    use crate::{indicators, indicators::Indicator, init_engine, Tick, TS};
     use chrono::prelude::*;
     use rust_decimal::Decimal;
     use std::path::Path;
@@ -223,7 +223,7 @@ mod tests {
     fn test_moving_average() {
         let mut engine = init_engine(&"test_resources/ticks.csv", 10000);
         let i = indicators::MovingAverage::new(10, "price".to_string());
-        engine.register_indicator("ind1".to_string(), Box::new(i));
+        engine.register_indicator("ind1".to_string(), Indicator::MovingAverage(i));
         engine.step();
         engine.step();
         assert!(
@@ -239,9 +239,9 @@ mod tests {
         let mut engine = init_engine(&"test_resources/ticks.csv", 10000);
         println!("Engine initialized");
         let i = indicators::MovingAverage::new(4, "price".to_string());
-        engine.register_indicator("ind2".to_string(), Box::new(i));
+        engine.register_indicator("ind2".to_string(), Indicator::MovingAverage(i));
         let mom = indicators::Momentum::new(3, "ind2".to_string());
-        engine.register_indicator("mom".to_string(), Box::new(mom));
+        engine.register_indicator("mom".to_string(), Indicator::Momentum(mom));
         for _ in 0..engine.prices.ticks.len() {
             engine.step();
         }
