@@ -113,6 +113,15 @@ impl Engine {
             }
         }
     }
+
+    pub fn reset(self: &mut Engine, cash: f64) {
+        self.acct.cash = Decimal::from_f64(cash).unwrap();
+        self.acct.portfolio = vec![];
+        self.index = 0;
+        for i in self.indicators.values_mut() {
+            i.reset();
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
