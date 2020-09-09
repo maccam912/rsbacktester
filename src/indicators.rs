@@ -27,6 +27,12 @@ impl Indicator {
             Indicator::Momentum(i) => i.value(),
         }
     }
+    pub fn reset(self: &mut Self) {
+        match self {
+            Indicator::MovingAverage(i) => i.reset(),
+            Indicator::Momentum(i) => i.reset(),
+        }
+    }
 }
 
 /// `MovingAverage` is defined by the `length` the MA should look back
@@ -47,9 +53,6 @@ impl MovingAverage {
             operands: VecDeque::new(),
         }
     }
-}
-
-impl MovingAverage {
     fn value(self: &Self) -> Option<f64> {
         let mut sum: f64 = 0.;
         let mut count: f64 = 0.;
@@ -73,6 +76,10 @@ impl MovingAverage {
         self.operands.push_front(stepvalue);
         self.operands.truncate(self.length);
     }
+
+    fn reset(self: &mut Self) {
+        self.operands = VecDeque::new();
+    }
 }
 
 /// `Momentum` is defined by the `length` the Momentum indicator should look back
@@ -93,9 +100,6 @@ impl Momentum {
             operands: VecDeque::new(),
         }
     }
-}
-
-impl Momentum {
     fn value(self: &Self) -> Option<f64> {
         let l = self.operands.len();
         if l == 0 {
@@ -115,5 +119,9 @@ impl Momentum {
     fn update(self: &mut Self, stepvalue: Option<f64>) {
         self.operands.push_front(stepvalue);
         self.operands.truncate(self.length);
+    }
+
+    fn reset(self: &mut Self) {
+        self.operands = VecDeque::new();
     }
 }
