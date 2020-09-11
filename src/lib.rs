@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use anyhow::anyhow;
 use chrono::prelude::*;
 use hashbrown::HashMap;
 use rust_decimal::prelude::*;
@@ -39,7 +40,40 @@ pub struct Position {
 #[derive(Debug, Clone)]
 pub struct Account {
     pub cash: Decimal,
-    pub portfolio: Vec<Position>,
+    pub portfolio: HashMap<String, Position>,
+    pub trades: Vec<Position>,
+}
+
+impl Account {
+    fn order(self: &mut Self, p: Position) -> anyhow::Result<()> {
+        // Check if account can support position
+        let cost = p.cost_basis.checked_mul(Decimal::new(p.lots, 0)).unwrap();
+        if cost.gt(&self.cash) {
+            return Err(anyhow!("Not enough cash in account to open position"));
+        }
+
+        let maybe_pos = self.portfolio.get_mut(&p.asset);
+
+        match maybe_pos {
+            Some(pos) => {
+                let current_equity = pos.cost_basis.checked_mul(Decimal::new(pos.lots, 0)).unwrap();
+                let new_equity = cost;
+                let total_equity = current_equity.checked_add(new_equity).unwrap();
+                let new_cb = total_equity.checked_div(Decimal::new(pos.lots+p.lots, 0)).unwrap();
+                pos.lots += p.lots;
+                pos.cost_basis = new_cb;
+                self.cash = self.cash.checked_sub(cost).unwrap();
+                self.trades.push(p);
+                return Ok(())
+            },
+            None => {
+                self.cash = self.cash.checked_sub(cost).unwrap();
+                self.portfolio.insert(p.asset.clone(), p.clone());
+                self.trades.push(p);
+                Ok(())
+            }
+        }
+    }
 }
 
 #[repr(C)]
@@ -116,7 +150,7 @@ impl Engine {
 
     pub fn reset(self: &mut Engine, cash: f64) {
         self.acct.cash = Decimal::from_f64(cash).unwrap();
-        self.acct.portfolio = vec![];
+        self.acct.portfolio = HashMap::new();
         self.index = 0;
         for i in self.indicators.values_mut() {
             i.reset();
@@ -139,7 +173,8 @@ struct Record {
 fn init_acct(cash: i64) -> Account {
     Account {
         cash: Decimal::from(cash),
-        portfolio: vec![],
+        portfolio: HashMap::new(),
+        trades: vec![],
     }
 }
 
@@ -184,8 +219,9 @@ pub fn init_engine<P: AsRef<Path>>(path: &P, cash: i64) -> Engine {
 
 #[cfg(test)]
 mod tests {
-    use crate::{indicators, indicators::Indicator, init_engine, Tick, TS};
-    use chrono::prelude::*;
+    use crate::{indicators, indicators::Indicator, init_engine, Tick, TS, Account, Position};
+        use hashbrown::HashMap;
+use chrono::prelude::*;
     use rust_decimal::Decimal;
     use std::path::Path;
 
@@ -259,5 +295,51 @@ mod tests {
         }
         assert!(engine.indicators["ind2"].value().unwrap() == 27.5);
         assert!(engine.indicators["mom"].value().unwrap() == 2.0);
+    }
+
+    #[test]
+    fn acct_open_position() {
+        let mut acct = Account{cash: Decimal::new(10000, 0), portfolio: HashMap::new(), trades: vec![]};
+        let pos = Position{asset: "AAPL".to_string(), lots: 1, cost_basis: Decimal::new(1000, 0)};
+        let resp = acct.order(pos);
+        assert!(resp.is_ok());
+        assert!(acct.portfolio.len() == 1);
+        assert!(acct.cash.eq(&Decimal::new(9000, 0)));
+
+        let p2 = Position{asset: "MSFT".to_string(), lots: 1, cost_basis: Decimal::new(2000, 0)};
+        let resp = acct.order(p2);
+        assert!(resp.is_ok());
+        assert!(acct.portfolio.len() == 2);
+        assert!(acct.cash.eq(&Decimal::new(7000, 0)));
+
+        let p3 = Position{asset: "AAPL".to_string(), lots: 2, cost_basis: Decimal::new(250, 0)};
+        let resp = acct.order(p3);
+        assert!(resp.is_ok());
+        assert!(acct.portfolio.len() == 2);
+        assert!(acct.cash.eq(&Decimal::new(6500, 0)));
+        assert!(acct.portfolio.get("AAPL").unwrap().cost_basis == Decimal::new(500, 0));
+
+        let p4 = Position{asset: "AAPL".to_string(), lots: 1, cost_basis: Decimal::new(10000, 0)};
+        let resp = acct.order(p4);
+        assert!(resp.is_err());
+        assert!(acct.cash.eq(&Decimal::new(6500, 0)));
+        assert!(acct.portfolio.get("AAPL").unwrap().lots == 3);
+    }
+
+    #[test]
+    fn acct_open_close() {
+        let mut acct = Account{cash: Decimal::new(10000, 0), portfolio: HashMap::new(), trades: vec![]};
+        let pos = Position{asset: "AAPL".to_string(), lots: 1, cost_basis: Decimal::new(1000, 0)};
+        let resp = acct.order(pos);
+        assert!(resp.is_ok());
+        assert!(acct.portfolio.len() == 1);
+        assert!(acct.cash.eq(&Decimal::new(9000, 0)));
+
+        let mut acct = Account{cash: Decimal::new(10000, 0), portfolio: HashMap::new(), trades: vec![]};
+        let pos = Position{asset: "AAPL".to_string(), lots: -1, cost_basis: Decimal::new(3000, 0)};
+        let resp = acct.order(pos);
+        assert!(resp.is_ok());
+        assert!(acct.portfolio.len() == 0);
+        assert!(acct.cash.eq(&Decimal::new(12000, 0)));
     }
 }
