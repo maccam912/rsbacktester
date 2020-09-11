@@ -11,9 +11,10 @@ pub mod account;
 
 use account::Account;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Tick {
     pub timestamp: DateTime<Utc>,
+    pub asset: String,
     pub bid: Decimal,
     pub ask: Decimal,
 }
@@ -24,7 +25,7 @@ pub struct Tick {
 /// use rust_decimal::Decimal;
 /// use chrono::Utc;
 ///
-/// let t = Tick{timestamp: Utc::now(), bid: Decimal::new(202, 2), ask: Decimal::new(203, 1)};
+/// let t = Tick{timestamp: Utc::now(), asset: "AAPL".to_string(), bid: Decimal::new(202, 2), ask: Decimal::new(203, 1)};
 /// let ts = TS{ticks: vec![t]};
 /// # assert!(ts.ticks.len() == 1);
 /// ```
@@ -41,6 +42,7 @@ pub struct Engine {
     pub prices: TS,
     pub index: i64,
     pub indicators: hashbrown::HashMap<String, indicators::Indicator>,
+    pub last_price: hashbrown::HashMap<String, Decimal>,
 }
 
 unsafe impl Send for Engine {}
@@ -59,7 +61,8 @@ impl Engine {
         let iv = self.indicator_values();
         self.update_indicators(iv);
         let _signals = self.check_signals();
-
+        let tick = &self.prices.ticks[self.index as usize];
+        self.last_price.insert(tick.asset.clone(), (tick.ask.checked_add(tick.bid)).unwrap().checked_div(Decimal::new(2,0)).unwrap());
         self.index += 1;
     }
 
@@ -93,7 +96,7 @@ impl Engine {
     pub fn update_indicators(self: &mut Engine, ind_values: HashMap<String, Option<f64>>) {
         for (_, indicator) in &mut self.indicators {
             if &indicator.get_input() == "price" {
-                let stepvaluetick = self.prices.ticks[self.index as usize];
+                let stepvaluetick = self.prices.ticks[self.index as usize].clone();
                 let stepvaluesum = stepvaluetick.ask.checked_add(stepvaluetick.bid);
                 let stepvalue = stepvaluesum.unwrap().checked_div(Decimal::new(2, 0));
                 let v: Option<f64> = stepvalue.expect("Decimal was screwy").to_f64();
@@ -113,6 +116,16 @@ impl Engine {
             i.reset();
         }
     }
+
+    pub fn equity(self: &Self) -> Decimal {
+        let mut total_equity = Decimal::new(0, 0);
+        for (asset, pos) in &self.acct.portfolio {
+            let equity = self.last_price[asset].checked_mul(Decimal::new(pos.lots, 0)).unwrap_or(Decimal::new(0,0));
+            total_equity = total_equity.checked_add(equity).unwrap();
+        }
+        total_equity = total_equity.checked_add(self.acct.cash).unwrap();
+        total_equity
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,6 +134,8 @@ struct Record {
     pub date: String,
     #[serde(rename = "Time")]
     pub time: String,
+    #[serde(rename = "Asset")]
+    pub asset: String,
     #[serde(rename = "Bid")]
     pub bid: String,
     #[serde(rename = "Ask")]
@@ -145,6 +160,7 @@ fn record_to_tick(r: &Record) -> anyhow::Result<Tick> {
     let bid: Decimal = Decimal::from_str(&r.bid)?;
     Ok(Tick {
         timestamp: utc_dt,
+        asset: r.asset.clone(),
         ask: ask,
         bid: bid,
     })
@@ -171,6 +187,7 @@ pub fn init_engine<P: AsRef<Path>>(path: &P, cash: i64) -> Engine {
         prices: prices,
         index: 0,
         indicators: HashMap::new(),
+        last_price: HashMap::new(),
     }
 }
 
@@ -186,6 +203,7 @@ mod tests {
     fn test_tick() {
         let t = Tick {
             timestamp: Utc::now(),
+            asset: "AAPL".to_string(),
             bid: Decimal::new(202, 2),
             ask: Decimal::new(203, 1),
         };
@@ -200,6 +218,7 @@ mod tests {
     fn test_ts() {
         let t = Tick {
             timestamp: Utc::now(),
+            asset: "AAPL".to_string(),
             bid: Decimal::new(202, 2),
             ask: Decimal::new(203, 1),
         };
@@ -302,5 +321,21 @@ mod tests {
         assert!(resp.is_ok());
         assert!(acct.portfolio.len() == 0);
         assert!(acct.cash.eq(&Decimal::new(12000, 0)));
+    }
+
+    #[test]
+    fn total_equity() {
+        let mut e = init_engine(&"test_resources/ticks.csv", 10000);
+        assert!(e.equity() == Decimal::new(10000, 0));
+        let result = e.acct.order(Position{asset: "AAPL".to_string(), lots: 1, cost_basis: Decimal::new(2, 0)});
+        assert!(result.is_ok());
+        e.step();
+        assert!(e.equity() == Decimal::new(9998+0, 0));
+        e.step();
+        assert!(e.equity() == Decimal::new(9998+1, 0));
+        e.step();
+        assert!(e.equity() == Decimal::new(9998+2, 0));
+        e.step();
+        assert!(e.equity() == Decimal::new(9998+3, 0));
     }
 }
