@@ -371,13 +371,25 @@ mod tests {
         assert!(engine.acct.orders.len() == 1);
         assert!(engine.acct.portfolio.len() == 0);
         assert!(engine.acct.orders[0].state == OrderState::Executed);
-        println!("{:?}", engine.acct);
         engine.step();
-        println!("{:?}", engine.acct);
         assert!(engine.acct.orders.len() == 0);
         assert!(engine.acct.portfolio.len() == 1);
         assert!(engine.acct.cash.lt(&Decimal::new(10000, 0)));
         assert!(engine.acct.portfolio["AAPL"].lots == 1);
+    }
+
+    #[test]
+    fn check_several_orders() {
+        let mut engine = init_engine(&"test_resources/ticks.csv", 10000);
+        engine.step();
+        engine.place_order("AAPL".to_string(), 1);
+        engine.step();
+        engine.place_order("AAPL".to_string(), -1);
+        engine.step();
+        assert!(engine.acct.portfolio.len() == 0);
+        assert!(engine.acct.orders.len() == 0);
+        assert!(engine.acct.trades.len() == 2);
+        assert!(engine.acct.cash == Decimal::new(10001, 0));
     }
     
     #[test]
