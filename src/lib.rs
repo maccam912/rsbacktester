@@ -34,21 +34,28 @@ pub struct TS {
     pub ticks: Vec<Tick>,
 }
 
-#[repr(C)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum Mode {
+    Live,
+    Backtest,
+}
+
 #[derive(Debug, Clone)]
 pub struct Engine {
     pub acct: account::Account,
     pub time: DateTime<Utc>,
     pub prices: TS,
     pub index: i64,
+    pub signals: Vec<Signal>,
     pub indicators: hashbrown::HashMap<String, indicators::Indicator>,
     pub last_price: hashbrown::HashMap<String, Decimal>,
+    pub mode: Mode,
 }
 
 unsafe impl Send for Engine {}
 unsafe impl Sync for Engine {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Signal {
     pub asset: String,
     pub direction_up: bool,
@@ -60,20 +67,10 @@ impl Engine {
     pub fn step(self: &mut Engine) {
         let iv = self.indicator_values();
         self.update_indicators(iv);
-        let _signals = self.check_signals();
         let tick = &self.prices.ticks[self.index as usize];
         self.last_price.insert(tick.asset.clone(), (tick.ask.checked_add(tick.bid)).unwrap().checked_div(Decimal::new(2,0)).unwrap());
+        self.update_account_orders();
         self.index += 1;
-    }
-
-    pub fn check_signals(self: &Engine) -> Vec<Signal> {
-        let s = Signal {
-            asset: "SPY".to_string(),
-            direction_up: true,
-            magnitude: None,
-            duration: None,
-        };
-        vec![s]
     }
 
     pub fn register_indicator(
@@ -108,6 +105,50 @@ impl Engine {
         }
     }
 
+    pub fn place_order(self: &mut Self, asset: String, lots: isize) {
+        self.acct.submit_order(asset, lots);
+        if self.mode == Mode::Backtest {
+            for order in &mut self.acct.orders {
+                if order.state == account::OrderState::Pending {
+                    order.state = account::OrderState::Executed;
+                    let last_tick = &self.prices.ticks[self.index as usize];
+                    if lots > 0 {
+                        order.cost_basis = Some(last_tick.ask);
+                    } else {
+                        order.cost_basis = Some(last_tick.bid);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn update_account_orders(self: &mut Self) {
+        println!("Update Account Orders");
+        for i in (self.acct.orders.len()..0).rev() {
+            println!("{:?}", i);
+            let order = &self.acct.orders[i];
+            match order.state {
+                account::OrderState::Executed => {
+                    println!("Executed: {:?}", order);
+                    let p = position::Position{asset: order.asset.clone(), lots: order.lots, cost_basis: order.cost_basis.unwrap()};
+                    let result = self.acct.position(p);
+                    if result.is_err() {
+                        println!("self.acct.position failed! {:?}", result);
+                    }
+                },
+                account::OrderState::Rejected => {
+                    println!("Rejected: {:?}", order);
+                    println!("Order rejected: {:?}", order);
+                    self.acct.orders.remove(i);
+                }
+                account::OrderState::Pending => {
+                    println!("Pending: {:?}", order);
+                },
+            }
+        }
+        self.acct.clear_executed();
+    }
+
     pub fn reset(self: &mut Engine, cash: f64) {
         self.acct.cash = Decimal::from_f64(cash).unwrap();
         self.acct.portfolio = HashMap::new();
@@ -120,7 +161,7 @@ impl Engine {
     pub fn equity(self: &Self) -> Decimal {
         let mut total_equity = Decimal::new(0, 0);
         for (asset, pos) in &self.acct.portfolio {
-            let equity = self.last_price[asset].checked_mul(Decimal::new(pos.lots, 0)).unwrap_or(Decimal::new(0,0));
+            let equity = self.last_price[asset].checked_mul(Decimal::new(pos.lots as i64, 0)).unwrap_or(Decimal::new(0,0));
             total_equity = total_equity.checked_add(equity).unwrap();
         }
         total_equity = total_equity.checked_add(self.acct.cash).unwrap();
@@ -147,6 +188,7 @@ fn init_acct(cash: i64) -> Account {
         cash: Decimal::from(cash),
         portfolio: HashMap::new(),
         trades: vec![],
+        orders: vec![],
     }
 }
 
@@ -186,14 +228,16 @@ pub fn init_engine<P: AsRef<Path>>(path: &P, cash: i64) -> Engine {
         time: t1,
         prices: prices,
         index: 0,
+        signals: vec![],
         indicators: HashMap::new(),
         last_price: HashMap::new(),
+        mode: Mode::Backtest,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{indicators, indicators::Indicator, init_engine, Tick, TS, account::Account, position::Position};
+    use crate::{indicators, indicators::Indicator, init_engine, Tick, TS, account::Account, position::Position, account::OrderState};
     use hashbrown::HashMap;
     use chrono::prelude::*;
     use rust_decimal::Decimal;
@@ -275,16 +319,16 @@ mod tests {
 
     #[test]
     fn acct_open_position() {
-        let mut acct = Account{cash: Decimal::new(10000, 0), portfolio: HashMap::new(), trades: vec![]};
+        let mut acct = Account{cash: Decimal::new(10000, 0), portfolio: HashMap::new(), trades: vec![], orders: vec![]};
         let pos = Position{asset: "AAPL".to_string(), lots: 1, cost_basis: Decimal::new(1000, 0)};
-        let resp = acct.order(pos);
+        let resp = acct.position(pos);
         assert!(resp.is_ok());
         assert!(acct.portfolio.len() == 1);
         assert!(acct.cash.eq(&Decimal::new(9000, 0)));
         assert!(acct.portfolio["AAPL"].lots == 1);
 
         let p2 = Position{asset: "MSFT".to_string(), lots: 1, cost_basis: Decimal::new(2000, 0)};
-        let resp = acct.order(p2);
+        let resp = acct.position(p2);
         assert!(resp.is_ok());
         assert!(acct.portfolio.len() == 2);
         assert!(acct.cash.eq(&Decimal::new(7000, 0)));
@@ -292,7 +336,7 @@ mod tests {
 
 
         let p3 = Position{asset: "AAPL".to_string(), lots: 2, cost_basis: Decimal::new(250, 0)};
-        let resp = acct.order(p3);
+        let resp = acct.position(p3);
         assert!(resp.is_ok());
         assert!(acct.portfolio.len() == 2);
         assert!(acct.cash.eq(&Decimal::new(6500, 0)));
@@ -301,7 +345,7 @@ mod tests {
 
 
         let p4 = Position{asset: "AAPL".to_string(), lots: 1, cost_basis: Decimal::new(10000, 0)};
-        let resp = acct.order(p4);
+        let resp = acct.position(p4);
         assert!(resp.is_err());
         assert!(acct.cash.eq(&Decimal::new(6500, 0)));
         assert!(acct.portfolio.get("AAPL").unwrap().lots == 3);
@@ -309,25 +353,44 @@ mod tests {
 
     #[test]
     fn acct_open_close() {
-        let mut acct = Account{cash: Decimal::new(10000, 0), portfolio: HashMap::new(), trades: vec![]};
+        let mut acct = Account{cash: Decimal::new(10000, 0), portfolio: HashMap::new(), trades: vec![], orders: vec![]};
         let pos = Position{asset: "AAPL".to_string(), lots: 1, cost_basis: Decimal::new(1000, 0)};
-        let resp = acct.order(pos);
+        let resp = acct.position(pos);
         assert!(resp.is_ok());
         assert!(acct.portfolio.len() == 1);
         assert!(acct.cash.eq(&Decimal::new(9000, 0)));
 
         let pos = Position{asset: "AAPL".to_string(), lots: -1, cost_basis: Decimal::new(3000, 0)};
-        let resp = acct.order(pos);
+        let resp = acct.position(pos);
         assert!(resp.is_ok());
         assert!(acct.portfolio.len() == 0);
         assert!(acct.cash.eq(&Decimal::new(12000, 0)));
     }
 
     #[test]
+    fn check_placing_orders() {
+        let mut engine = init_engine(&"test_resources/ticks.csv", 10000);
+        engine.step();
+        engine.step();
+        engine.place_order("AAPL".to_string(), 1);
+        assert!(engine.acct.orders.len() == 1);
+        assert!(engine.acct.portfolio.len() == 0);
+        assert!(engine.acct.orders[0].state == OrderState::Executed);
+        println!("{:?}", engine.acct);
+        engine.step();
+        engine.step();
+        println!("{:?}", engine.acct);
+        assert!(engine.acct.orders.len() == 0);
+        assert!(engine.acct.portfolio.len() == 1);
+        assert!(engine.acct.cash.lt(&Decimal::new(10000, 0)));
+        assert!(engine.acct.portfolio["AAPL"].lots == 1);
+    }
+    
+    #[test]
     fn total_equity() {
         let mut e = init_engine(&"test_resources/ticks.csv", 10000);
         assert!(e.equity() == Decimal::new(10000, 0));
-        let result = e.acct.order(Position{asset: "AAPL".to_string(), lots: 1, cost_basis: Decimal::new(2, 0)});
+        let result = e.acct.position(Position{asset: "AAPL".to_string(), lots: 1, cost_basis: Decimal::new(2, 0)});
         assert!(result.is_ok());
         e.step();
         assert!(e.equity() == Decimal::new(9998+0, 0));
