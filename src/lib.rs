@@ -123,13 +123,10 @@ impl Engine {
     }
 
     pub fn update_account_orders(self: &mut Self) {
-        println!("Update Account Orders");
-        for i in (self.acct.orders.len()..0).rev() {
-            println!("{:?}", i);
+        for i in (0..self.acct.orders.len()).rev() {
             let order = &self.acct.orders[i];
             match order.state {
                 account::OrderState::Executed => {
-                    println!("Executed: {:?}", order);
                     let p = position::Position{asset: order.asset.clone(), lots: order.lots, cost_basis: order.cost_basis.unwrap()};
                     let result = self.acct.position(p);
                     if result.is_err() {
@@ -137,12 +134,10 @@ impl Engine {
                     }
                 },
                 account::OrderState::Rejected => {
-                    println!("Rejected: {:?}", order);
                     println!("Order rejected: {:?}", order);
                     self.acct.orders.remove(i);
                 }
                 account::OrderState::Pending => {
-                    println!("Pending: {:?}", order);
                 },
             }
         }
@@ -377,7 +372,6 @@ mod tests {
         assert!(engine.acct.portfolio.len() == 0);
         assert!(engine.acct.orders[0].state == OrderState::Executed);
         println!("{:?}", engine.acct);
-        engine.step();
         engine.step();
         println!("{:?}", engine.acct);
         assert!(engine.acct.orders.len() == 0);
