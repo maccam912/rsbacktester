@@ -175,4 +175,41 @@ mod tests {
         e.step();
         assert!(e.equity() == Decimal::new(9998+3, 0));
     }
+    
+    #[test]
+    fn e2e_test() {
+        let mut e = init_engine(&"test_resources/ticks.csv", 10000);
+        let long_sma = indicators::MovingAverage::new(4, "price".to_string());
+        let short_sma = indicators::MovingAverage::new(2, "price".to_string());
+        e.register_indicator("long_sma".to_string(), indicators::Indicator::MovingAverage(long_sma));
+        e.register_indicator("short_sma".to_string(), indicators::Indicator::MovingAverage(short_sma));
+        
+        // start going!
+        while e.index < (e.prices.ticks.len()-1) as i64 {
+            let ind_values = e.indicator_values();
+            if ind_values["short_sma"].is_some() && ind_values["long_sma"].is_some() {
+                if ind_values["short_sma"].unwrap() > ind_values["long_sma"].unwrap() {
+                    // buy
+                    let curr_aapl = e.acct.portfolio.get("AAPL");
+                    if curr_aapl.is_none() || curr_aapl.unwrap().lots < 1 {
+                        e.place_order("AAPL".to_string(), 1);
+                    }
+                } else {
+                    // sell
+                    let curr_aapl = e.acct.portfolio.get("AAPL");
+                    if curr_aapl.is_none() || curr_aapl.unwrap().lots > -1 {
+                        e.place_order("AAPL".to_string(), -1);
+                    }
+                }
+            }
+            println!("{:?}", e.acct);
+            e.step();
+        }
+        let current_lots = e.acct.portfolio["AAPL"].lots;
+        // close positions
+        e.place_order("AAPL".to_string(), -1*current_lots);
+        e.step();
+        assert!(e.acct.portfolio.len() == 0);
+        assert!(e.acct.cash.gt(&Decimal::new(10000, 0)));
+    }
 }
