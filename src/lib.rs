@@ -8,6 +8,7 @@ use std::path::Path;
 pub mod indicators;
 pub mod position;
 pub mod account;
+pub mod tests;
 
 use account::Account;
 
