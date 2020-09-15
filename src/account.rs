@@ -4,6 +4,8 @@ use anyhow::anyhow;
 
 use crate::position::Position;
 
+/// `OrderState` tracks if an order is `Pending`,
+/// `Rejected`, or has been `Executed`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum OrderState {
     Pending,
@@ -11,6 +13,8 @@ pub enum OrderState {
     Executed,
 }
 
+/// `Order` tracks in progres or recently executed
+/// orders.
 #[derive(Debug, Clone)]
 pub struct Order {
     pub state: OrderState,
@@ -19,6 +23,10 @@ pub struct Order {
     pub cost_basis: Option<Decimal>,
 }
 
+/// `Account` tracks the current state of an account,
+/// including remaining `cash`, any `Position`s open,
+/// a history of `trade`s, and any pending or recently executed
+/// `orders`.
 #[derive(Debug, Clone)]
 pub struct Account {
     pub cash: Decimal,
