@@ -1,8 +1,8 @@
-use rust_decimal::prelude::*;
+use num_rational::Ratio;
 
 #[derive(Debug, Clone)]
 pub struct Position {
     pub asset: String,
-    pub lots: isize,
-    pub cost_basis: Decimal,
+    pub lots: i64,
+    pub costbasis: Ratio<i64>,
 }
